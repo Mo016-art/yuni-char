@@ -1,53 +1,20 @@
-name: 编译 yuni char APK
-on:
-  push:
-    paths: ['source.zip', '.github/workflows/build.yml']
-  workflow_dispatch:
+name: build
+on: [workflow_dispatch, push]
 jobs:
-  build:
+  apk:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
-        with: {distribution: temurin, java-version: '17'}
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: android-actions/setup-android@v3
       - uses: gradle/actions/setup-gradle@v4
-        with: {gradle-version: '8.9'}
-      - name: 装 SDK 并编译
-        run: |
-          set -e
-          export ANDROID_HOME=/usr/local/lib/android/sdk
-          SM=$(find "$ANDROID_HOME" -type f -name sdkmanager 2>/dev/null | head -1)
-          [ -n "$SM" ] || { echo "找不到 sdkmanager"; ls "$ANDROID_HOME"; exit 1; }
-          export PATH="$(dirname "$SM"):$ANDROID_HOME/platform-tools:$PATH"
-          sudo mkdir -p "$ANDROID_HOME/licenses"
-          printf '8933bad161af4178b1185d1a37fbf41ea5269c55\nd56f4867471eab7cf98ce9a2f2d0d8db8d0d7d\n' | sudo tee "$ANDROID_HOME/licenses/android-sdk-license" >/dev/null
-          printf '84831b9409646a918e30573bab4c9c91359e58\n' | sudo tee "$ANDROID_HOME/licenses/android-sdk-preview-license" >/dev/null
-          "$SM" --install "platforms;android-35" "build-tools;35.0.0" "platform-tools"
-          rm -rf project && mkdir project
-          unzip -q source.zip -d project
-          ROOT=$(find project -name settings.gradle.kts -printf '%h\n' | head -1)
-          cd "$ROOT"
-          echo "sdk.dir=$ANDROID_HOME" > local.properties
-          if gradle assembleDebug --no-daemon > /tmp/b.log 2>&1; then
-            tail -8 /tmp/b.log
-            echo "APK=$PWD/app/build/outputs/apk/debug/app-debug.apk" >> "$GITHUB_ENV"
-          else
-            ERR=$(grep -n -E "e: |error:|FAILURE:|What went wrong|^> Task .*FAILED|Compilation error" /tmp/b.log | head -60 || true)
-            {
-              echo "## ❌ 把下面这些行发我"
-              echo '```'
-              echo "$ERR"
-              echo '```'
-            } >> "$GITHUB_STEP_SUMMARY"
-            echo "===== ERROR LINES ====="
-            echo "$ERR"
-            echo "===== 日志开头 120 行 ====="
-            head -120 /tmp/b.log
-            exit 1
-          fi
+        with:
+          gradle-version: 8.7
+      - run: gradle assembleDebug --stacktrace
       - uses: actions/upload-artifact@v4
         with:
-          name: yuni-char-apk
-          path: ${{ env.APK }}
-          if-no-files-found: error
-          retention-days: 14
+          name: app-debug
+          path: app/build/outputs/apk/debug/*.apk
