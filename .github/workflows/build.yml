@@ -1,0 +1,48 @@
+name: 编译 yuni char APK
+on:
+  push:
+    paths: ['source.zip', '.github/workflows/build.yml']
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: 检查源码包
+        id: chk
+        run: |
+          if [ ! -f source.zip ]; then
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/setup-java@v4
+        if: steps.chk.outputs.ok == 'true'
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        if: steps.chk.outputs.ok == 'true'
+      - uses: gradle/actions/setup-gradle@v4
+        if: steps.chk.outputs.ok == 'true'
+        with:
+          gradle-version: '8.9'
+      - name: 解压并编译
+        if: steps.chk.outputs.ok == 'true'
+        run: |
+          yes | sdkmanager --licenses >/dev/null 2>&1 || true
+          sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools" >/dev/null
+          rm -rf project && mkdir project
+          unzip -q source.zip -d project
+          ROOT=$(find project -name settings.gradle.kts -printf '%h\n' | head -1)
+          cd "$ROOT"
+          gradle wrapper --gradle-version 8.9 --distribution-type bin
+          ./gradlew assembleDebug --no-daemon --stacktrace
+          echo "APK=$PWD/app/build/outputs/apk/debug/app-debug.apk" >> "$GITHUB_ENV"
+      - uses: actions/upload-artifact@v4
+        if: steps.chk.outputs.ok == 'true'
+        with:
+          name: yuni-char-apk
+          path: ${{ env.APK }}
+          if-no-files-found: error
+          retention-days: 14
